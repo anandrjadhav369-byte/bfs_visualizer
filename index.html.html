@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BFS Visualizer – Step by Step</title>
+<style>
+  :root{
+    --bg:#0f172a;          /* slate-900 */
+    --panel:#111827;       /* gray-900 */
+    --soft:#1f2937;        /* gray-800 */
+    --text:#e5e7eb;        /* gray-200 */
+    --muted:#9ca3af;       /* gray-400 */
+    --accent:#60a5fa;      /* blue-400 current node */
+    --queued:#fbbf24;      /* amber-400 discovered/in-queue */
+    --done:#34d399;        /* emerald-400 processed */
+    --edge:#94a3b8;        /* slate-400 */
+    --edgeHl:#f472b6;      /* pink-400 */
+    --btn:#334155;
+    --btnHover:#475569;
+  }
+  *{box-sizing:border-box; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Inter", Arial;}
+  body{margin:0;background:var(--bg);color:var(--text);} 
+  header{ padding:18px 24px;border-bottom:1px solid #1f2937;background:linear-gradient(180deg,#0b1228,#0f172a);} 
+  header h1{margin:0;font-size:20px;letter-spacing:.2px}
+  header p{margin:4px 0 0;color:var(--muted);font-size:13.5px}
+  .wrap{display:grid;grid-template-columns: 3fr 2fr; gap:16px; padding:16px; min-height: calc(100vh - 80px);} 
+  .card{background:var(--panel); border:1px solid #1f2937; border-radius:12px; overflow:hidden;}
+  .card h2{margin:0; padding:12px 14px; font-size:16px; border-bottom:1px solid #1f2937;background:#0b1328;}
+  .stage{position:relative; height:560px;} 
+  svg{width:100%; height:100%; display:block; background:radial-gradient(1200px 400px at 50% -50%, #1a2443 0%, #0f172a 60%);} 
+  .edge{stroke:var(--edge); stroke-width:3;}
+  .edge.hl{stroke:var(--edgeHl); stroke-width:4.5;}
+  .node{cursor:pointer;} 
+  .node circle{stroke:#111827; stroke-width:3; fill:#fff;} 
+  .node text{font-size:16px; font-weight:700; fill:#111827; pointer-events:none;} 
+  .node.queued circle{fill:var(--queued);} 
+  .node.current circle{fill:var(--accent); fill-opacity:.95;} 
+  .node.done circle{fill:var(--done); fill-opacity:.95;} 
+  .hud{ position:absolute; left:12px; bottom:12px; right:12px; display:flex; gap:12px; align-items:center; justify-content:space-between; background:rgba(15,23,42,.6); border:1px solid #1f2937; padding:10px 12px; border-radius:10px; backdrop-filter: blur(6px);} 
+  .controls{display:flex; gap:8px; align-items:center; flex-wrap:wrap;} 
+  button{ background:var(--btn); color:var(--text); border:1px solid #263244; padding:8px 12px; border-radius:8px; cursor:pointer; font-weight:600; letter-spacing:.3px;}
+  button:hover{background:var(--btnHover);} 
+  button:disabled{opacity:.4; cursor:not-allowed;} 
+  .pill{padding:6px 10px; border-radius:999px; background:#0b1328; border:1px solid #1f2937; color:var(--muted); font-size:12.5px;} 
+  .panel{ display:grid; grid-template-rows: auto auto 1fr; gap:12px; padding:12px; } 
+  .sub{display:flex; gap:12px;} 
+  .box{flex:1; background:var(--soft); border:1px solid #1f2937; border-radius:10px; padding:10px;} 
+  .box h3{margin:0 0 6px 0; font-size:14px; color:#cbd5e1} 
+  .strip{display:flex; gap:6px; flex-wrap:wrap; align-items:center; min-height:36px} 
+  .chip{ min-width:30px; text-align:center; padding:6px 10px; border-radius:8px; font-weight:700; letter-spacing:.3px; border:1.5px solid #0b1328; background:#0b1328; } 
+  .chip.queued{background:var(--queued); color:#111827} 
+  .chip.current{background:var(--accent); color:#0b1328} 
+  .chip.done{background:var(--done); color:#0b1328} 
+  pre{margin:0; padding:10px; background:#0b1328; border:1px solid #1f2937; border-radius:10px; overflow:auto; max-height:240px; font-size:13px; line-height:1.45;} 
+  .code-line{display:block; padding:3px 8px; border-radius:6px;} 
+  .code-line.hl{background:#17213d; outline:1px solid #1f2b4f;} 
+  .legend{display:flex; gap:8px; align-items:center; font-size:12.5px; color:var(--muted)} 
+  .legend span{display:inline-flex; align-items:center; gap:6px} 
+  .dot{width:14px; height:14px; border-radius:50%;} 
+  .dot.q{background:var(--queued)} 
+  .dot.c{background:var(--accent)} 
+  .dot.d{background:var(--done)} 
+  .note{color:var(--muted); font-size:12.5px} 
+  .footer{padding:10px 14px; color:var(--muted); font-size:12px; border-top:1px solid #1f2937;} 
+  input[type="range"]{accent-color:#60a5fa} 
+  .status{font-size:12.5px; color:#cbd5e1}
+</style>
+</head>
+<body>
+  <header>
+    <h1>Breadth‑First Search (BFS) – Interactive Visualizer</h1>
+    <p>Click a node to choose the start. Use <strong>Play</strong> or <strong>Step</strong>. Queue, traversal order, and pseudocode will update automatically.</p>
+  </header>
+
+  <main class="wrap">
+    <!-- Left: Graph -->
+    <section class="card">
+      <h2>Graph</h2>
+      <div class="stage">
+        <!-- SVG graph (positions chosen for clarity) -->
+        <svg id="graph" viewBox="0 0 800 560" aria-label="BFS Graph">
+          <!-- Edges -->
+          <!-- A-B, A-C, B-D, B-E, C-F, C-E -->
+          <g id="edges"></g>
+          <g id="nodes"></g>
+        </svg>
+
+        <div class="hud">
+          <div class="controls">
+            <button id="btnStep">Step</button>
+            <button id="btnPlay">Play</button>
+            <button id="btnPause" disabled>Pause</button>
+            <button id="btnReset">Reset</button>
+            <span class="pill status" id="statusText">Status: idle</span>
+          </div>
+          <div class="controls">
+            <label class="pill" style="display:flex; align-items:center; gap:8px;">
+              Speed
+              <input type="range" id="speed" min="0.25" max="2" step="0.25" value="1" title="Playback Speed (0.25x – 2x)"/>
+              <span id="speedVal">1x</span>
+            </label>
+            <div class="legend">
+              <span><span class="dot q"></span>Queued</span>
+              <span><span class="dot c"></span>Current</span>
+              <span><span class="dot d"></span>Done</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">
+        <span class="note">Tip: press Step to advance one operation; Play to auto‑advance. Click any node (A–F) to change the start node.</span>
+      </div>
+    </section>
+
+    <!-- Right: Panels -->
+    <aside class="card panel">
+      <div class="sub">
+        <div class="box">
+          <h3>Queue (front → back)</h3>
+          <div id="queue" class="strip" aria-live="polite" aria-label="Queue state"></div>
+        </div>
+        <div class="box">
+          <h3>Traversal Order (dequeue sequence)</h3>
+          <div id="order" class="strip"></div>
+        </div>
+      </div>
+
+      <div class="box">
+        <h3>Explanation</h3>
+        <div id="explain" class="note">Select a start node to begin (default: A). BFS discovers neighbors level-by-level using a queue.</div>
+      </div>
+
+      <div class="box">
+        <h3>Pseudocode (highlighted as BFS runs)</h3>
+<pre aria-label="BFS pseudocode"><code>
+<span id="L1" class="code-line">1  mark all nodes unvisited</span>
+<span id="L2" class="code-line">2  enqueue(start); visited[start] = true</span>
+<span id="L3" class="code-line">3  while queue is not empty:</span>
+<span id="L4" class="code-line">4      u = dequeue()</span>
+<span id="L5" class="code-line">5      for v in adjacency[u]:</span>
+<span id="L6" class="code-line">6          if not visited[v]:</span>
+<span id="L7" class="code-line">7              visited[v] = true; enqueue(v)</span>
+</code></pre>
+      </div>
+    </aside>
+  </main>
+
+<script>
+/* =============== Graph Definition (feel free to edit) =============== */
+const nodes = [
+  {id:'A', x:400, y:110},
+  {id:'B', x:220, y:240},
+  {id:'C', x:580, y:240},
+  {id:'D', x:140, y:410},
+  {id:'E', x:400, y:410},
+  {id:'F', x:660, y:410},
+];
+
+// Undirected edges: A-B, A-C, B-D, B-E, C-F, C-E
+const edges = [
+  ['A','B'], ['A','C'], ['B','D'], ['B','E'], ['C','F'], ['C','E']
+];
+
+/* =============== Build adjacency map =============== */
+const adj = new Map(nodes.map(n => [n.id, []]));
+for (const [u,v] of edges){
+  adj.get(u).push(v);
+  adj.get(v).push(u);
+}
+// Sort neighbors for deterministic order (A..Z)
+for (const [k, list] of adj) list.sort();
+
+/* =============== DOM helpers =============== */
+const svg = document.getElementById('graph');
+const gEdges = document.getElementById('edges');
+const gNodes = document.getElementById('nodes');
+const queueEl = document.getElementById('queue');
+const orderEl = document.getElementById('order');
+const explainEl = document.getElementById('explain');
+const statusText = document.getElementById('statusText');
+
+function qs(id){ return document.getElementById(id); }
+function setHL(lines=[]){
+  for (let i=1;i<=7;i++) qs('L'+i).classList.toggle('hl', lines.includes(i));
+}
+function makeChip(text, cls=''){ const d=document.createElement('div'); d.className='chip '+cls; d.textContent=text; return d; }
+function updateQueue(q){
+  queueEl.innerHTML='';
+  q.forEach((id,i)=>queueEl.appendChild(makeChip(id, 'queued')));
+}
+function updateOrder(arr){
+  orderEl.innerHTML='';
+  arr.forEach(id=>orderEl.appendChild(makeChip(id, 'done')));
+}
+
+/* =============== Draw graph =============== */
+const nodeById = new Map();
+const edgeEls = [];
+
+function draw(){
+  // Edges
+  gEdges.innerHTML='';
+  for (const [u,v] of edges){
+    const nu = nodes.find(n => n.id===u);
+    const nv = nodes.find(n => n.id===v);
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', nu.x); line.setAttribute('y1', nu.y);
+    line.setAttribute('x2', nv.x); line.setAttribute('y2', nv.y);
+    line.setAttribute('class', 'edge');
+    line.dataset.u = u; line.dataset.v = v;
+    gEdges.appendChild(line);
+    edgeEls.push(line);
+  }
+  // Nodes
+  gNodes.innerHTML='';
+  nodes.forEach(n=>{
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class','node');
+    g.dataset.id = n.id;
+
+    const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    c.setAttribute('cx', n.x); c.setAttribute('cy', n.y); c.setAttribute('r', 28);
+
+    const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+    t.setAttribute('x', n.x); t.setAttribute('y', n.y+6);
+    t.setAttribute('text-anchor','middle'); t.textContent = n.id;
+
+    g.appendChild(c); g.appendChild(t);
+    gNodes.appendChild(g);
+    nodeById.set(n.id, g);
+
+    g.addEventListener('click', ()=> {
+      if (state.phase!=='idle') return; // allow choose only in idle
+      state.start = n.id;
+      explain(`Start node set to <b>${n.id}</b>. Press <b>Play</b> or <b>Step</b> to begin.`);
+      for (const [id, el] of nodeById) el.classList.remove('current'); 
+      g.classList.add('current');
+    });
+  });
+}
+draw();
+
+/* =============== BFS Engine (step-by-step) =============== */
+const state = {
+  start: 'A',
+  phase: 'idle',       // idle | running | paused | finished
+  queue: [],
+  visited: new Set(),
+  order: [],
+  current: null,
+  neighborList: [],
+  timer: null,
+  speed: 1,
+};
+
+function setPhase(p){
+  state.phase = p;
+  statusText.textContent = `Status: ${p}`;
+  qs('btnPlay').disabled = (p==='running' || p==='finished');
+  qs('btnPause').disabled = !(p==='running');
+  qs('btnStep').disabled = (p==='running' || p==='finished');
+}
+
+function reset(){
+  // Reset visuals
+  for (const [id, el] of nodeById){
+    el.classList.remove('queued','current','done');
+  }
+  edgeEls.forEach(e=>e.classList.remove('hl'));
+  // Reset state
+  state.queue = [];
+  state.visited = new Set();
+  state.order = [];
+  state.current = null;
+  state.neighborList = [];
+  updateQueue(state.queue);
+  updateOrder(state.order);
+  setHL([]);
+  setPhase('idle');
+  explain(`Select a start node (default <b>${state.start}</b>) and press <b>Play</b> or <b>Step</b>.`);
+}
+reset();
+
+function explain(html){ explainEl.innerHTML = html; }
+
+/* Produce one atomic BFS action each time it's called */
+function step(){
+  if (state.phase==='finished') return;
+
+  if (state.phase==='idle'){
+    // initialization
+    setPhase('paused');
+    // Enqueue start
+    const s = state.start;
+    state.queue.push(s);
+    state.visited.add(s);
+    nodeById.get(s).classList.add('queued');
+    updateQueue(state.queue);
+    setHL([1,2]);
+    explain(`Initialize: enqueue <b>${s}</b>, mark visited.`);
+    return;
+  }
+
+  // If no current node is being processed, dequeue next
+  if (!state.current){
+    if (state.queue.length===0){
+      // Done
+      setPhase('finished');
+      setHL([]);
+      explain(`BFS completed. Order: <b>${state.order.join(' → ')}</b>.`);
+      return;
+    }
+    const u = state.queue.shift();
+    state.current = u;
+    state.neighborList = [...adj.get(u)]; // already sorted
+    // Visuals
+    nodeById.get(u).classList.remove('queued');
+    nodeById.get(u).classList.add('current');
+    state.order.push(u);
+    updateQueue(state.queue);
+    updateOrder(state.order);
+    setHL([3,4]);
+    explain(`Dequeue <b>${u}</b> and explore its neighbors: <b>${state.neighborList.join(', ')}</b>.`);
+    return;
+  }
+
+  // Process next neighbor of current
+  if (state.neighborList.length){
+    const u = state.current;
+    const v = state.neighborList.shift();
+
+    // Highlight the (u,v) edge briefly
+    highlightEdge(u, v);
+
+    if (!state.visited.has(v)){
+      state.visited.add(v);
+      state.queue.push(v);
+      nodeById.get(v).classList.add('queued');
+      updateQueue(state.queue);
+      setHL([5,6,7]);
+      explain(`Neighbor <b>${v}</b> is unvisited → mark visited and enqueue.`);
+    }else{
+      setHL([5,6]);
+      explain(`Neighbor <b>${v}</b> already visited → skip.`);
+    }
+    return;
+  }
+
+  // Finished all neighbors of current
+  const done = state.current;
+  nodeById.get(done).classList.remove('current');
+  nodeById.get(done).classList.add('done');
+  state.current = null;
+  setHL([3]); // loop will continue
+  explain(`Finished exploring <b>${done}</b>. Continue while queue is not empty.`);
+}
+
+function highlightEdge(u, v){
+  const match = edgeEls.find(e=>{
+    return (e.dataset.u===u && e.dataset.v===v) || (e.dataset.u===v && e.dataset.v===u);
+  });
+  if (!match) return;
+  match.classList.add('hl');
+  setTimeout(()=>match.classList.remove('hl'), 600);
+}
+
+/* =============== Playback controls =============== */
+function play(){
+  if (state.phase==='finished') return;
+  if (state.phase==='idle') step(); // do initialization
+  setPhase('running');
+  runTimer();
+}
+function runTimer(){
+  clearInterval(state.timer);
+  const base = 700; // ms per step at 1x
+  const interval = base / state.speed;
+  state.timer = setInterval(()=>{
+    step();
+    if (state.phase==='finished') { pause(); }
+  }, interval);
+}
+function pause(){
+  clearInterval(state.timer);
+  setPhase('paused');
+}
+
+/* =============== Wire controls =============== */
+qs('btnStep').addEventListener('click', step);
+qs('btnPlay').addEventListener('click', play);
+qs('btnPause').addEventListener('click', pause);
+qs('btnReset').addEventListener('click', ()=>{
+  pause();
+  reset();
+});
+const speed = qs('speed');
+const speedVal = qs('speedVal');
+speed.addEventListener('input', ()=>{
+  state.speed = Number(speed.value);
+  speedVal.textContent = `${state.speed.toFixed(2).replace(/\.00$/,'')}x`.replace('.25','¼').replace('.50','½').replace('.75','¾');
+  if (state.phase==='running') runTimer();
+});
+// initialize speed value
+state.speed = Number(speed.value);
+speed.dispatchEvent(new Event('input'));
+</script>
+</body>
+</html>
